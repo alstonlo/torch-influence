@@ -109,7 +109,7 @@ scores = module.influences([1, 2, 3], [0])
 ```
 
 
-For more details, we refer users to the API Reference.
+For more details, we refer users to the [API Reference](https://torch-influence.readthedocs.io/en/latest/).
 
 
 
