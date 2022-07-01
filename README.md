@@ -2,7 +2,9 @@
 
 # torch-influence
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/)
+![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/alstonlo/torch-influence)
+[![Read the Docs](https://img.shields.io/readthedocs/torch-influence)](https://torch-influence.readthedocs.io/en/latest/)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE.txt)
 
 </div>
 
@@ -109,7 +111,7 @@ scores = module.influences([1, 2, 3], [0])
 ```
 
 
-For more details, we refer users to the API Reference.
+For more details, we refer users to the [API Reference](https://torch-influence.readthedocs.io/en/latest/).
 
 
 
