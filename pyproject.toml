@@ -1,0 +1,48 @@
+# ========================================= #
+#                   Setup                   #
+# ========================================= #
+
+[build-system]
+requires = ["setuptools>=40.9.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+
+# ========================================= #
+#                   Tests                   #
+# ========================================= #
+
+[tool.pytest.ini_options]
+minversion = 7.0
+testpaths = ["tests"]
+
+# ========================================= #
+#                  Linting                  #
+# ========================================= #
+
+[tool.isort]
+extend_skip = ["docs"]
+profile = "black"
+line_length = 120
+lines_after_imports = 2
+
+[tool.pylint.main]
+ignore = ["docs"]
+disable = [
+    "invalid-name",
+    "cell-var-from-loop",
+    "too-many-arguments",
+    "too-many-locals",
+    "too-many-instance-attributes",
+    "missing-docstring",
+    "unbalanced-tuple-unpacking",
+    "no-else-return",
+    "not-callable",
+    "duplicate-code",
+    "anomalous-backslash-in-string",
+]
+
+[tool.pylint.format]
+max-line-length = 120
+
+[tool.pylint.TYPECHECK]
+generated-members = ["torch.*"]
