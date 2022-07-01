@@ -1,1 +1,16 @@
+"""
+A simple and minimal PyTorch implementation of influence functions.
+"""
+
 __version__ = "0.0.0"
+
+__all__ = [
+    "BaseInfluenceModule",
+    "BaseObjective",
+    "AutogradInfluenceModule",
+    "CGInfluenceModule",
+    "LiSSAInfluenceModule",
+]
+
+from torch_influence.base import BaseInfluenceModule, BaseObjective
+from torch_influence.modules import AutogradInfluenceModule, CGInfluenceModule, LiSSAInfluenceModule
