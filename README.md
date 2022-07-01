@@ -2,7 +2,8 @@
 
 # torch-influence
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/)
+![Read the Docs](https://img.shields.io/readthedocs/torch-influence)
+![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)
 
 </div>
 
