@@ -22,6 +22,8 @@ data poisoning, increasing model fairness, and data augmentation.
 This library aims to be simple and minimal. In addition, it fixes a few errors found in some of the existing
 implementations of influence functions.
 
+Note: We plan to include the JAX version of this repository soon.
+
 ______________________________________________________________________
 
 ## Installation
