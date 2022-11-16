@@ -22,7 +22,7 @@ data poisoning, increasing model fairness, and data augmentation.
 This library aims to be simple and minimal. In addition, it fixes a few errors found in some of the existing
 implementations of influence functions.
 
-Note: We plan to include the JAX version of this repository soon.
+The code is supplement to the paper [If Influence Functions are the Answer, Then What is the Question?](https://arxiv.org/abs/2209.05364). Furthermore, the Jax implementation can be found at [here](https://github.com/pomonam/jax-influence).
 
 ______________________________________________________________________
 
