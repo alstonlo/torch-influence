@@ -1,10 +1,15 @@
 import abc
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Union, Iterator, Tuple
+from collections import UserDict
 
 import numpy as np
 import torch
 from torch import nn
 from torch.utils import data
+
+
+ParamsT = Tuple[torch.nn.Parameter, ...]
+NamedParamsT = Tuple[Tuple[str, torch.nn.Parameter], ...]
 
 
 def _set_attr(obj, names, val):
@@ -32,6 +37,11 @@ class BaseObjective(abc.ABC):
     @abc.abstractmethod
     def train_outputs(self, model: nn.Module, batch: Any) -> torch.Tensor:
         """Returns a batch of model outputs (e.g., logits, probabilities) from a batch of data.
+
+        One place where train_outputs() is typically called is the optional
+        Gauss-Newton Hessian vector product (GNHVP). 
+        Note that if GNHVP is used it is required that the train_outputs() method
+        returns such outputs that the loss function is convex in the outputs. 
 
         Args:
             model: the model.
@@ -257,13 +267,27 @@ class BaseInfluenceModule(abc.ABC):
 
     # Model and parameter helpers
 
-    def _model_params(self, with_names=True):
+    def _model_params(self, with_names=True) -> Union[ParamsT, NamedParamsT]:
+        """Returns trainable parameters of the model"""
         assert not self.is_model_functional
-        return tuple((name, p) if with_names else p for name, p in self.model.named_parameters() if p.requires_grad)
+        return tuple(
+            (name, p) if with_names else p 
+            for name, p in self.model.named_parameters() 
+            if p.requires_grad)
 
     def _model_make_functional(self):
+        """Deletes all trainable parameters from the model and returns them as a tuple.
+
+        Note: 
+        This method doesn't actually make the model functional
+        (i.e. the model's forward doesn't take parameters as input). 
+        To make a model call after :meth:`_model_make_functional` was applied 
+        without making it stateful 
+        :meth:`_model_reinsert_params(params, register=False)` is used.
+        """
         assert not self.is_model_functional
-        params = tuple(p.detach().requires_grad_() for p in self._model_params(False))
+        params = tuple(p.detach().requires_grad_() 
+                       for p in self._model_params(with_names=False))
 
         for name in self.params_names:
             _del_attr(self.model, name.split("."))
@@ -272,6 +296,9 @@ class BaseInfluenceModule(abc.ABC):
         return params
 
     def _model_reinsert_params(self, params, register=False):
+        """Re-inserts the model parameters from a tuple of tensors
+        into the model, optionally registering them as parameters.
+        """
         for name, p in zip(self.params_names, params):
             _set_attr(self.model, name.split("."), torch.nn.Parameter(p) if register else p)
         self.is_model_functional = not register
@@ -298,12 +325,35 @@ class BaseInfluenceModule(abc.ABC):
             return batch.to(self.device)
         elif isinstance(batch, (tuple, list)):
             return type(batch)(self._transfer_to_device(x) for x in batch)
-        elif isinstance(batch, dict):
+        elif isinstance(batch, (dict, UserDict)):
             return {k: self._transfer_to_device(x) for k, x in batch.items()}
         else:
             raise NotImplementedError()
 
     def _loader_wrapper(self, train, batch_size=None, subset=None, sample_n_batches=-1):
+        """A generator that yields batches of data from a data loader.
+
+        This helper creates a `DataLoader` for a specified subset of the data,
+        optionally with a different batch size or random sampling.
+
+        Args:
+            train (bool): If True, use the training loader; otherwise, use the test loader.
+            batch_size (Optional[int]): The batch size for the new loader. If None, uses
+                the original loader's batch size.
+            subset (Optional[List[int]]): A list of indices to create a `Subset` of
+                the original dataset. If None, uses the full dataset.
+            sample_n_batches (int): If > 0, forces the loader to produce
+                this many batches per epoch, sampling from the dataset 
+                (or subset, if specified) with replacement. Note that 
+                sample_n_batches can be bigger than `len(dataset) / batch_size`.
+
+        Yields:
+            tuple: A tuple containing the data batch (moved to the device) and the
+                actual size of the batch. 
+                For all batches except possibly the last,
+                the actual size will be equal to `batch_size` 
+                while the last batch may be smaller. 
+        """
         loader = self.train_loader if train else self.test_loader
         batch_size = loader.batch_size if (batch_size is None) else batch_size
 
@@ -319,7 +369,8 @@ class BaseInfluenceModule(abc.ABC):
 
         if sample_n_batches > 0:
             num_samples = sample_n_batches * batch_size
-            sampler = data.RandomSampler(data_source=dataset, replacement=True, num_samples=num_samples)
+            sampler = data.RandomSampler(
+                data_source=dataset, replacement=True, num_samples=num_samples)
         else:
             sampler = None
 
@@ -342,7 +393,15 @@ class BaseInfluenceModule(abc.ABC):
 
     # Loss and autograd helpers
 
-    def _loss_grad_loader_wrapper(self, train, **kwargs):
+    def _loss_grad_loader_wrapper(self, train: bool, **kwargs
+                                  ) -> Iterator[Tuple[torch.Tensor, int]]:
+        """A generator that computes and yields loss gradients for each batch
+        along with the batch size.
+
+        Yields:
+            tuple: A tuple containing the flattened loss gradient for the batch
+            and the batch size.
+        """
         params = self._model_params(with_names=False)
         flat_params = self._flatten_params_like(params)
 
@@ -352,12 +411,33 @@ class BaseInfluenceModule(abc.ABC):
             yield self._flatten_params_like(torch.autograd.grad(loss, params)), batch_size
 
     def _loss_grad(self, idxs, train):
+        """Computes the mean loss gradient over a specified set of data indices."""
         grad = 0.0
         for grad_batch, batch_size in self._loss_grad_loader_wrapper(subset=idxs, train=train):
+            # Multiply by batch size since the loss is assumed to be mean-reduced
             grad = grad + grad_batch * batch_size
         return grad / len(idxs)
 
-    def _hvp_at_batch(self, batch, flat_params, vec, gnh):
+    def _hvp_at_batch(self, batch, flat_params, vec, gnh: bool) -> torch.Tensor:
+        """Computes a Hessian-vector product (HVP) on a single batch of data.
+
+        This method is used in BaseInfluenceModule's subclasses.
+
+        This method can compute either the exact HVP or an approximation using the
+        Gauss-Newton matrix (GNHVP), which is always positive semi-definite. It uses
+        the functional form of the model.
+
+        Args:
+            batch (Any): A batch of data.
+            flat_params (torch.Tensor): The flattened model parameters.
+            vec (torch.Tensor): The vector `v` for the HVP calculation.
+            gnh (bool): If True, computes the Gauss-Newton HVP. Otherwise, computes
+                the exact HVP. Note that the GNHVP is only applicable if
+                :meth:`train_loss()` is convex in the :meth:`train_outputs()`.
+
+        Returns:
+            torch.Tensor: The result of the HVP on the batch.
+        """
 
         def f(theta_):
             self._model_reinsert_params(self._reshape_like_params(theta_))
